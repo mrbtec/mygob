@@ -3,6 +3,7 @@ import (
 	"encoding/gob"
 	"os"
 	"sync"
+	"fmt"
 )
 
 type GobStore struct {
