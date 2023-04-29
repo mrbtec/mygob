@@ -1,9 +1,10 @@
 package mygob
+
 import (
 	"encoding/gob"
+	"fmt"
 	"os"
 	"sync"
-	"fmt"
 )
 
 type GobStore struct {
@@ -11,7 +12,6 @@ type GobStore struct {
 	data     map[string]interface{}
 	filename string
 }
-
 
 func NewGobStore(path string) *GobStore {
 	return &GobStore{
@@ -26,10 +26,24 @@ func (s *GobStore) Set(key string, value interface{}) {
 	s.data[key] = value
 }
 
-func (s *GobStore) SetMultiGob(items map[string]interface{}) {
+func (s *GobStore) SetAndSave(key string, value interface{}) {
+	s.Lock()
+	defer s.Unlock()
+	s.data[key] = value
+
+	if err := s.SaveToFile(); err != nil {
+		fmt.Println("Err SetAndSave ", err)
+	}
+}
+
+func (s *GobStore) SetMulti(items map[string]interface{}) {
+	s.Lock()
+	defer s.Unlock()
 	for key, value := range items {
 		s.Set(key, value)
-		s.SaveToFile()
+	}
+	if err := s.SaveToFile(); err != nil {
+		fmt.Println(err)
 	}
 }
 
@@ -48,6 +62,20 @@ func (s *GobStore) Get(key string) (interface{}, bool) {
 	defer s.RUnlock()
 	val, ok := s.data[key]
 	return val, ok
+}
+
+func (s *GobStore) GetOrSet(key string, value interface{}) interface{} {
+	var v interface{}
+	var ok bool
+	if v, ok = s.Get(key); !ok {
+		s.Set(key, value)
+		if err := s.SaveToFile(); err != nil {
+			fmt.Println("GetOrSet", err)
+		}
+	} else {
+		return v
+	}
+	return v
 }
 
 func (s *GobStore) Delete(key string) {
@@ -112,4 +140,44 @@ func (s *GobStore) CreateFile() error {
 		file.Close()
 	}
 	return nil
+}
+
+func (s *GobStore) Count() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.data)
+}
+func (s *GobStore) HasKey(key string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	_, ok := s.data[key]
+	return ok
+}
+func (s *GobStore) ListKeys() ([]string, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	keys := make([]string, 0, len(s.data))
+	for k := range s.data {
+		keys = append(keys, k)
+	}
+
+	return keys, nil
+}
+func (s *GobStore) DeleteAll() error {
+	s.Lock()
+	defer s.Unlock()
+	s.data = make(map[string]interface{})
+	if err := s.SaveToFile(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *GobStore) getCurrentDir() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return wd
 }
